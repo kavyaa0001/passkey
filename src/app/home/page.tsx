@@ -762,7 +762,7 @@ export default function UserHome() {
               <button className="flex-1 bg-[#2A2A35] py-4 rounded-[1.25rem] flex items-center justify-center gap-2 text-sm font-semibold hover:bg-white/10 transition-colors">
                 <Share className="w-4 h-4" /> Transfer
               </button>
-              {(() => {
+              {ticket.status === "Used" && (() => {
                 const req = chanceRequests.find(
                   (r) => r.eventName.toLowerCase().trim() === ticket.eventName.toLowerCase().trim()
                 );
