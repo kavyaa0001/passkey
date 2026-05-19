@@ -859,28 +859,14 @@ export default function UserHome() {
             {zoomQR && (
               <div 
                 onClick={() => setZoomQR(false)} 
-                className="absolute inset-0 bg-[#0E0E12]/95 backdrop-blur-xl z-[100] flex flex-col items-center justify-center p-6 animate-in fade-in duration-200 cursor-pointer"
+                className="absolute inset-0 bg-[#0E0E12]/98 backdrop-blur-2xl z-[100] flex flex-col items-center justify-center p-6 animate-in fade-in duration-200 cursor-pointer"
               >
-                <div className="text-center mb-8">
-                  <p className="text-[#A57CF4] text-xs uppercase font-extrabold tracking-[0.2em]">EASY SCAN MODE</p>
-                  <h4 className="text-lg font-black text-white mt-1.5 truncate max-w-[280px]">
-                    {ticket.eventName}
-                  </h4>
-                </div>
-
                 {/* Massive QR Container */}
-                <div className="bg-white p-6 rounded-[2.5rem] shadow-2xl flex items-center justify-center border-4 border-[#8D55F3]/30 scale-105 transition-transform duration-300">
-                  <QRCodeSVG value={ticket.ticketId} size={220} level="H" includeMargin={false} />
+                <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl flex items-center justify-center border-4 border-[#8D55F3]/30 scale-110">
+                  <QRCodeSVG value={ticket.ticketId} size={260} level="H" includeMargin={false} />
                 </div>
 
-                <div className="text-center mt-8 space-y-2">
-                  <p className="text-xs text-white/30 font-medium tracking-wider">TICKET UNIQUE ID</p>
-                  <p className="font-mono text-base font-black tracking-widest text-[#A57CF4] bg-[#8D55F3]/10 px-4 py-2 rounded-xl border border-[#8D55F3]/20">
-                    {ticket.ticketId}
-                  </p>
-                </div>
-
-                <p className="absolute bottom-10 text-[9px] text-white/30 font-bold uppercase tracking-widest animate-pulse">
+                <p className="absolute bottom-10 text-[9px] text-white/20 font-bold uppercase tracking-widest animate-pulse">
                   Tap anywhere to close
                 </p>
               </div>
@@ -1093,20 +1079,55 @@ export default function UserHome() {
                     No announcements or notifications yet.
                   </div>
                 ) : (
-                  notificationsList.map((notif) => (
-                    <div key={notif.id} className="bg-[#2A2A35]/50 border border-[#8D55F3]/15 rounded-2xl p-4 shadow-sm relative overflow-hidden">
-                      <div className="absolute top-0 left-0 h-full w-1 bg-[#8D55F3]/80"></div>
-                      <div className="flex justify-between items-start mb-1 pl-2">
-                        <h4 className="font-bold text-sm text-[#A57CF4]">{notif.title}</h4>
-                        <span className="text-[10px] text-white/30">
-                          {notif.createdAt?.seconds 
-                            ? new Date(notif.createdAt.seconds * 1000).toLocaleDateString(undefined, {month: 'short', day: 'numeric'}) 
-                            : 'Just now'}
-                        </span>
+                  notificationsList.map((notif) => {
+                    const isTicketAlert = notif.title.toLowerCase().includes("ticket") || notif.title.toLowerCase().includes("approved");
+                    
+                    return (
+                      <div 
+                        key={notif.id} 
+                        className="bg-white/[0.03] backdrop-blur-xl border border-white/10 rounded-[1.25rem] p-4 flex gap-3.5 shadow-[0_12px_32px_rgba(0,0,0,0.3)] relative overflow-hidden transition-all hover:bg-white/[0.05]"
+                      >
+                        {/* iOS style Avatar with Badge */}
+                        <div className="relative shrink-0 w-11 h-11">
+                          <div className={`w-full h-full rounded-full bg-gradient-to-br ${
+                            isTicketAlert ? 'from-[#8D55F3] to-[#A57CF4]' : 'from-[#34C759] to-[#30B350]'
+                          } flex items-center justify-center border border-white/10 shadow-inner`}>
+                            {isTicketAlert ? (
+                              <Ticket className="w-5 h-5 text-white" />
+                            ) : (
+                              <Bell className="w-5 h-5 text-white" />
+                            )}
+                          </div>
+                          
+                          {/* Bottom-right badge */}
+                          <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#1C1C22] border border-[#1A1A1F] flex items-center justify-center">
+                            <div className={`w-full h-full rounded-full ${
+                              isTicketAlert ? 'bg-[#8D55F3]' : 'bg-[#34C759]'
+                            } flex items-center justify-center scale-90`}>
+                              <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Content text */}
+                        <div className="flex-1 min-w-0 flex flex-col justify-center">
+                          <div className="flex justify-between items-baseline gap-2">
+                            <h4 className="font-extrabold text-xs text-white uppercase tracking-wider">
+                              {notif.title}
+                            </h4>
+                          </div>
+                          <p className="text-xs text-white/70 mt-1 leading-relaxed">
+                            {notif.message}
+                          </p>
+                          <p className="text-[9px] text-white/30 mt-2 font-mono font-medium tracking-tight">
+                            {notif.createdAt?.seconds 
+                              ? new Date(notif.createdAt.seconds * 1000).toLocaleDateString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'})
+                              : 'Just now'}
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-xs text-white/70 pl-2 leading-relaxed">{notif.message}</p>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
