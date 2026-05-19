@@ -105,6 +105,7 @@ export default function AdminDashboard() {
   // Admin User List & History States
   const [showUsersList, setShowUsersList] = useState(false);
   const [usersList, setUsersList] = useState<any[]>([]);
+  const [userSearchQuery, setUserSearchQuery] = useState("");
   const [selectedUserHistory, setSelectedUserHistory] = useState<any | null>(null);
   const [showUserHistoryDetail, setShowUserHistoryDetail] = useState(false);
 
@@ -1398,21 +1399,52 @@ export default function AdminDashboard() {
             <div className="bg-[#1C1C22] rounded-t-[2.5rem] p-6 pb-12 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] border-t border-white/5 max-h-[85vh] flex flex-col">
               <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto mb-6 shrink-0"></div>
               
-              <div className="flex justify-between items-center mb-6 shrink-0">
+              <div className="flex justify-between items-center mb-4 shrink-0">
                 <h3 className="text-xl font-bold">User Registrations</h3>
-                <button onClick={() => setShowUsersList(false)} className="w-8 h-8 bg-white/5 rounded-full flex items-center justify-center border border-white/5">
+                <button onClick={() => { setShowUsersList(false); setUserSearchQuery(""); }} className="w-8 h-8 bg-white/5 rounded-full flex items-center justify-center border border-white/5">
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
+              {/* Search Bar */}
+              <div className="relative mb-4 shrink-0">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-white/30">
+                  <Search className="w-4 h-4" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search by name or email..."
+                  value={userSearchQuery}
+                  onChange={(e) => setUserSearchQuery(e.target.value)}
+                  className="w-full bg-[#2A2A35]/50 border border-white/5 rounded-xl pl-10 pr-10 py-3 text-xs text-white placeholder-white/30 focus:outline-none focus:border-[#8D55F3] focus:ring-1 focus:ring-[#8D55F3]/30 transition-all shadow-inner"
+                />
+                {userSearchQuery && (
+                  <button
+                    onClick={() => setUserSearchQuery("")}
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-white/40 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
               {/* Scrollable User Profiles List */}
               <div className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-[250px] max-h-[50vh] hide-scrollbar mb-4">
-                {usersList.length === 0 ? (
-                  <div className="bg-[#2A2A35]/30 border border-white/5 rounded-2xl p-8 text-center text-white/40 text-sm">
-                    No users registered yet.
-                  </div>
-                ) : (
-                  usersList.map((user, idx) => (
+                {(() => {
+                  const filteredUsers = usersList.filter(user => 
+                    user.fullName.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                    user.email.toLowerCase().includes(userSearchQuery.toLowerCase())
+                  );
+
+                  if (filteredUsers.length === 0) {
+                    return (
+                      <div className="bg-[#2A2A35]/30 border border-white/5 rounded-2xl p-8 text-center text-white/40 text-sm">
+                        {userSearchQuery ? "No matching users found." : "No users registered yet."}
+                      </div>
+                    );
+                  }
+
+                  return filteredUsers.map((user, idx) => (
                     <div 
                       key={idx} 
                       onClick={() => {
@@ -1436,8 +1468,8 @@ export default function AdminDashboard() {
                         </span>
                       </div>
                     </div>
-                  ))
-                )}
+                  ));
+                })()}
               </div>
             </div>
           </div>
