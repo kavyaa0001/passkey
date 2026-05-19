@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowLeft, MoreHorizontal, Share, Clock, MapPin, Home as HomeIcon, Bell, Wallet, PlusSquare, X, Map as MapIcon, Menu, LogOut, CheckCircle2, Ticket, Sparkles } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, Share, Clock, MapPin, Home as HomeIcon, Bell, Wallet, PlusSquare, X, Map as MapIcon, Menu, LogOut, CheckCircle2, Ticket, Sparkles, Download } from "lucide-react";
+import html2canvas from "html2canvas";
 import { db, auth } from "@/lib/firebase";
 import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, onSnapshot, addDoc } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
@@ -76,6 +77,7 @@ export default function UserHome() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationsList, setNotificationsList] = useState<any[]>([]);
   const [chanceRequests, setChanceRequests] = useState<any[]>([]);
+  const [zoomQR, setZoomQR] = useState(false);
   const [hasNewNotification, setHasNewNotification] = useState(false);
   const [photoError, setPhotoError] = useState(false);
 
@@ -423,6 +425,36 @@ export default function UserHome() {
     }
   };
 
+  const handleDownloadTicket = async () => {
+    const element = document.getElementById("ticket-stub-capture");
+    if (!element) {
+      triggerToast("Error: Ticket element not found.");
+      return;
+    }
+    
+    triggerToast("Generating ticket image download...");
+    try {
+      const canvas = await html2canvas(element, {
+        backgroundColor: null,
+        scale: 3, // higher scaling for premium crisp quality
+        useCORS: true,
+        logging: false
+      });
+      
+      const imageUri = canvas.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.href = imageUri;
+      link.download = `PassKey_${ticket?.ticketId || "Ticket"}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      triggerToast("Ticket downloaded successfully!");
+    } catch (err) {
+      console.error("Error downloading ticket image:", err);
+      triggerToast("Failed to download ticket image.");
+    }
+  };
+
   const avatars = [
     "https://i.pravatar.cc/100?img=1",
     "https://i.pravatar.cc/100?img=2",
@@ -653,7 +685,12 @@ export default function UserHome() {
               const eventTimeStr = matchingEvent.startTime || matchingEvent.timePill || "20:00";
 
               return (
-                <div className="w-full max-w-[360px] mx-auto bg-transparent flex rounded-[1.75rem] overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.6)] border border-white/10 font-sans h-[190px] relative mb-8 select-none">
+                <div 
+                  id="ticket-stub-capture"
+                  onClick={() => setZoomQR(true)}
+                  className="w-full max-w-[360px] mx-auto bg-transparent flex rounded-[1.75rem] overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.6)] border border-white/10 font-sans h-[190px] relative mb-8 select-none cursor-pointer hover:scale-[1.01] active:scale-[0.99] transition-all"
+                  title="Click to zoom QR code for easy scanning"
+                >
                   
                   {/* LEFT STUB (ROTATED STUFF) */}
                   <div className="w-[28%] bg-gradient-to-br from-[#E11D48] to-[#FF2D55] flex flex-col justify-between items-center py-3 relative border-r border-dashed border-white/20 overflow-hidden">
@@ -759,8 +796,11 @@ export default function UserHome() {
             </div>
 
             <div className="flex gap-4 px-4 mb-6">
-              <button className="flex-1 bg-[#2A2A35] py-4 rounded-[1.25rem] flex items-center justify-center gap-2 text-sm font-semibold hover:bg-white/10 transition-colors">
-                <Share className="w-4 h-4" /> Transfer
+              <button 
+                onClick={handleDownloadTicket}
+                className="flex-1 bg-[#2A2A35] py-4 rounded-[1.25rem] flex items-center justify-center gap-2 text-sm font-semibold hover:bg-white/10 transition-colors"
+              >
+                <Download className="w-4 h-4 text-[#A57CF4]" /> Download Ticket
               </button>
               {ticket.status === "Used" && (() => {
                 const req = chanceRequests.find(
@@ -814,6 +854,37 @@ export default function UserHome() {
                 return null;
               })()}
             </div>
+
+            {/* EASY SCAN MODE (ZOOMED QR OVERLAY) */}
+            {zoomQR && (
+              <div 
+                onClick={() => setZoomQR(false)} 
+                className="absolute inset-0 bg-[#0E0E12]/95 backdrop-blur-xl z-[100] flex flex-col items-center justify-center p-6 animate-in fade-in duration-200 cursor-pointer"
+              >
+                <div className="text-center mb-8">
+                  <p className="text-[#A57CF4] text-xs uppercase font-extrabold tracking-[0.2em]">EASY SCAN MODE</p>
+                  <h4 className="text-lg font-black text-white mt-1.5 truncate max-w-[280px]">
+                    {ticket.eventName}
+                  </h4>
+                </div>
+
+                {/* Massive QR Container */}
+                <div className="bg-white p-6 rounded-[2.5rem] shadow-2xl flex items-center justify-center border-4 border-[#8D55F3]/30 scale-105 transition-transform duration-300">
+                  <QRCodeSVG value={ticket.ticketId} size={220} level="H" includeMargin={false} />
+                </div>
+
+                <div className="text-center mt-8 space-y-2">
+                  <p className="text-xs text-white/30 font-medium tracking-wider">TICKET UNIQUE ID</p>
+                  <p className="font-mono text-base font-black tracking-widest text-[#A57CF4] bg-[#8D55F3]/10 px-4 py-2 rounded-xl border border-[#8D55F3]/20">
+                    {ticket.ticketId}
+                  </p>
+                </div>
+
+                <p className="absolute bottom-10 text-[9px] text-white/30 font-bold uppercase tracking-widest animate-pulse">
+                  Tap anywhere to close
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
