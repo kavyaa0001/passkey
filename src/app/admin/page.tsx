@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { Html5Qrcode, Html5QrcodeScanType } from "html5-qrcode";
 import { X, Settings, CheckCircle2, XCircle, AlertCircle, Home as HomeIcon, Bell, Wallet, PlusSquare, LayoutTemplate, Camera, Search, Keyboard, LogOut, Users, PlusCircle } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
-import { doc, getDoc, updateDoc, serverTimestamp, collection, query, getDocs, addDoc, deleteDoc, where, setDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, serverTimestamp, collection, query, getDocs, addDoc, deleteDoc, where, setDoc, onSnapshot } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
 
@@ -46,7 +46,7 @@ export default function AdminDashboard() {
 
   // Admin Stats State
   const [showStats, setShowStats] = useState(false);
-  const [stats, setStats] = useState({ total: 0, checkedIn: 0, checkedOut: 0 });
+  const [stats, setStats] = useState({ total: 0, checkedIn: 0, pending: 0 });
 
   // Preset Configurations for Themes & Images
   const PRESETS = [
@@ -289,33 +289,69 @@ export default function AdminDashboard() {
   };
 
   const fetchUsersAndTickets = async () => {
-    if (!db) return;
-    try {
-      const querySnapshot = await getDocs(collection(db, "tickets"));
-      const ticketList: any[] = [];
-      querySnapshot.forEach((docSnap) => {
-        ticketList.push(docSnap.data());
-      });
+    // Handled in real-time useEffect listener below
+  };
 
+  const fetchStats = async () => {
+    // Handled in real-time useEffect listener below
+  };
+
+  // Real-time Tickets Stats and User List listener
+  useEffect(() => {
+    if (!db || isAuthLoading) return;
+
+    const q = query(collection(db, "tickets"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      let total = 0;
+      let checkedIn = 0;
+      const ticketList: any[] = [];
+      
+      snapshot.forEach((docSnap) => {
+        const ticketData = docSnap.data();
+        ticketList.push({ docId: docSnap.id, ...ticketData });
+        total++;
+        if (ticketData.status === "Used") checkedIn++;
+      });
+      
+      // Update stats state
+      setStats({ total, checkedIn, pending: total - checkedIn });
+
+      // Update usersList state group-by email
       const userMap = new Map<string, any>();
-      ticketList.forEach((t) => {
-        if (!t.email) return;
-        if (!userMap.has(t.email)) {
-          userMap.set(t.email, {
-            fullName: t.fullName || "Anonymous",
-            email: t.email,
-            phoneNumber: t.phoneNumber || "N/A",
+      ticketList.forEach((ticket) => {
+        const emailKey = (ticket.email || ticket.userEmail || "").toLowerCase().trim();
+        if (!emailKey) return;
+        
+        if (!userMap.has(emailKey)) {
+          userMap.set(emailKey, {
+            fullName: ticket.fullName || "Guest User",
+            email: emailKey,
+            phoneNumber: ticket.phoneNumber || "N/A",
             tickets: []
           });
         }
-        userMap.get(t.email).tickets.push(t);
+        userMap.get(emailKey).tickets.push(ticket);
       });
+      
+      // Sort users list by name
+      const sortedUsers = Array.from(userMap.values()).sort((a, b) => 
+        a.fullName.localeCompare(b.fullName)
+      );
+      setUsersList(sortedUsers);
+      
+      // Sync selectedUserHistory detail popup in real-time if open
+      if (selectedUserHistory) {
+        const updatedUser = sortedUsers.find(u => u.email === selectedUserHistory.email);
+        if (updatedUser) {
+          setSelectedUserHistory(updatedUser);
+        }
+      }
+    }, (err) => {
+      console.error("Error in real-time stats listener:", err);
+    });
 
-      setUsersList(Array.from(userMap.values()));
-    } catch (err) {
-      console.error("Error fetching users list:", err);
-    }
-  };
+    return () => unsubscribe();
+  }, [db, isAuthLoading, selectedUserHistory]);
 
   const fetchNotifications = async () => {
     if (!db) return;
@@ -364,25 +400,6 @@ export default function AdminDashboard() {
       fetchNotifications();
     } catch (err) {
       console.error("Error deleting announcement:", err);
-    }
-  };
-
-  const fetchStats = async () => {
-    if (!db) return;
-    try {
-      const querySnapshot = await getDocs(collection(db, "tickets"));
-      let total = 0;
-      let checkedIn = 0;
-      let checkedOut = 0;
-      querySnapshot.forEach((docSnap) => {
-        total++;
-        const status = docSnap.data().status;
-        if (status === "Checked In") checkedIn++;
-        if (status === "Checked Out") checkedOut++;
-      });
-      setStats({ total, checkedIn, checkedOut });
-    } catch (err) {
-      console.error(err);
     }
   };
 
@@ -633,20 +650,10 @@ export default function AdminDashboard() {
       {/* Top Controls Area */}
       <div className="relative z-10 w-full pt-14 px-5 flex flex-col items-center gap-4">
         
-        {/* Toggle Mode */}
-        <div className="bg-[#1C1C22]/80 backdrop-blur-xl rounded-full p-1 flex shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/5 w-max mx-auto">
-          <button 
-            onClick={() => setScanMode("in")}
-            className={`px-6 py-2 rounded-full text-sm font-bold transition-colors ${scanMode === "in" ? "bg-[#8D55F3] text-white shadow-lg" : "text-white/50"}`}
-          >
-            Check-In
-          </button>
-          <button 
-            onClick={() => setScanMode("out")}
-            className={`px-6 py-2 rounded-full text-sm font-bold transition-colors ${scanMode === "out" ? "bg-[#8D55F3] text-white shadow-lg" : "text-white/50"}`}
-          >
-            Check-Out
-          </button>
+        {/* Verification Title Header */}
+        <div className="bg-[#1C1C22]/80 backdrop-blur-xl rounded-full px-6 py-2.5 shadow-[0_10px_30px_rgba(0,0,0,0.5)] border border-white/5 flex items-center gap-2">
+          <div className="w-2.5 h-2.5 rounded-full bg-[#34C759] animate-pulse"></div>
+          <span className="text-sm font-bold tracking-wide uppercase text-white/90">Check-In Active</span>
         </div>
 
         {/* Manual Input Bar */}
@@ -1046,8 +1053,8 @@ export default function AdminDashboard() {
                   <p className="text-2xl font-black text-[#34C759]">{stats.checkedIn}</p>
                 </div>
                 <div className="bg-[#FF9500]/10 border border-[#FF9500]/20 rounded-2xl p-4 text-center">
-                  <p className="text-[10px] text-[#FF9500] uppercase font-bold mb-1">Checked Out</p>
-                  <p className="text-2xl font-black text-[#FF9500]">{stats.checkedOut}</p>
+                  <p className="text-[10px] text-[#FF9500] uppercase font-bold mb-1">Pending</p>
+                  <p className="text-2xl font-black text-[#FF9500]">{stats.pending}</p>
                 </div>
               </div>
 
@@ -1484,18 +1491,20 @@ export default function AdminDashboard() {
                     </div>
                     <div className="shrink-0 text-right">
                       <span className={`text-[9px] px-2.5 py-1 rounded-full font-bold uppercase ${
-                        t.status === "Checked In" 
-                          ? "bg-green-500/10 text-green-400 border border-green-500/20" 
-                          : t.status === "Checked Out"
-                          ? "bg-orange-500/10 text-orange-400 border border-orange-500/20"
-                          : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                        t.status === "Used" 
+                          ? "bg-[#34C759]/15 text-[#34C759] border border-[#34C759]/30" 
+                          : "bg-white/5 text-white/40 border border-white/10"
                       }`}>
-                        {t.status}
+                        {t.status === "Used" ? "Used" : "Not Used"}
                       </span>
-                      <span className="block text-[8px] text-white/30 mt-1.5">
-                        {t.bookedAt?.seconds 
-                          ? new Date(t.bookedAt.seconds * 1000).toLocaleDateString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'}) 
-                          : 'Valid'}
+                      <span className="block text-[8px] text-white/30 mt-1.5 font-mono">
+                        {t.status === "Used" && t.scannedAt?.seconds ? (
+                          `Scanned: ${new Date(t.scannedAt.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+                        ) : t.bookedAt?.seconds ? (
+                          `Booked: ${new Date(t.bookedAt.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                        ) : (
+                          "Valid"
+                        )}
                       </span>
                     </div>
                   </div>
