@@ -360,7 +360,10 @@ export default function AdminDashboard() {
       const querySnapshot = await getDocs(q);
       const list: any[] = [];
       querySnapshot.forEach((docSnap) => {
-        list.push({ id: docSnap.id, ...docSnap.data() });
+        const data = docSnap.data();
+        if (!data.userEmail) {
+          list.push({ id: docSnap.id, ...data });
+        }
       });
       list.sort((a, b) => {
         const timeA = a.createdAt?.seconds || 0;

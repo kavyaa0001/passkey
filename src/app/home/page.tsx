@@ -583,45 +583,143 @@ export default function UserHome() {
         // TICKET VIEW
         <div className="flex-1 flex flex-col h-full bg-[#1A1A1F] relative overflow-y-auto pb-24">
           <div className="px-5 pt-14 pb-6">
-            <div className="flex items-center gap-4 mb-8">
+            <div className="flex items-center gap-4 mb-6">
               <button onClick={() => setTicket(null)} className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center border border-white/5">
                 <ArrowLeft className="w-5 h-5 text-white" />
               </button>
               <h1 className="flex-1 font-semibold text-center truncate">{ticket.eventName}</h1>
-              <button className="w-10 h-10 bg-white/5 rounded-full flex items-center justify-center border border-white/5">
-                <MoreHorizontal className="w-5 h-5 text-white" />
-              </button>
+              <div className="w-10 h-10" />
             </div>
 
-            <div className="flex gap-3 mb-6">
-              <div className="flex-1 bg-[#6552D0]/20 py-2 px-4 rounded-full flex items-center justify-center gap-2 border border-[#6552D0]/30">
-                <Clock className="w-3.5 h-3.5 text-[#A57CF4]" />
-                <span className="text-xs font-medium text-[#A57CF4]">17:00 • 20 Oct</span>
+            {/* Premium Cinema Ticket Stub */}
+            {(() => {
+              const matchingEvent = events.find(
+                (e) => e.title.replace(/\n/g, ' ').toLowerCase() === ticket.eventName.toLowerCase() ||
+                       (e.shortTitle && e.shortTitle.toLowerCase() === ticket.eventName.toLowerCase())
+              ) || EVENTS[0];
+
+              const venueName = matchingEvent.venuePill || "VENUE";
+              const venueAbbr = venueName.split(' ')[0].toUpperCase();
+              
+              // Generate dynamic row and seat numbers from the unique ticketId
+              const rowNum = String((ticket.ticketId.charCodeAt(3) % 9) + 1).padStart(2, '0');
+              const seatNum = String((ticket.ticketId.charCodeAt(5) % 40) + 1).padStart(2, '0');
+              
+              // Format event time and date nicely
+              const eventDateStr = matchingEvent.date;
+              const eventTimeStr = matchingEvent.startTime || matchingEvent.timePill || "20:00";
+
+              return (
+                <div className="w-full max-w-[360px] mx-auto bg-transparent flex rounded-[1.75rem] overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.6)] border border-white/10 font-sans h-[190px] relative mb-8 select-none">
+                  
+                  {/* LEFT STUB (ROTATED STUFF) */}
+                  <div className="w-[28%] bg-gradient-to-br from-[#E11D48] to-[#FF2D55] flex flex-col justify-between items-center py-3 relative border-r border-dashed border-white/20 overflow-hidden">
+                    
+                    {/* Perforation Cutouts */}
+                    <div className="absolute top-[-8px] right-[-8px] w-4 h-4 rounded-full bg-[#1A1A1F] z-10 border border-white/5"></div>
+                    <div className="absolute bottom-[-8px] right-[-8px] w-4 h-4 rounded-full bg-[#1A1A1F] z-10 border border-white/5"></div>
+                    
+                    {/* Vertical Content */}
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-90deg] w-[180px] text-center flex flex-col items-center justify-center">
+                      <span className="text-[6px] text-white/60 font-extrabold uppercase tracking-[0.25em] mb-0.5">PASSKEY PASS</span>
+                      <h4 className="text-[10px] font-black text-white uppercase tracking-wider truncate max-w-[130px]">
+                        {ticket.eventName}
+                      </h4>
+                      <p className="text-[7px] text-white/80 mt-1 font-bold tracking-tight">
+                        {eventDateStr.split(',')[0]} | {eventTimeStr}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* RIGHT MAIN CARD */}
+                  <div className="w-[72%] bg-gradient-to-br from-[#12111A] via-[#161426] to-[#0A0910] p-4 flex flex-col justify-between relative overflow-hidden">
+                    
+                    {/* Bokeh Background Light Effects */}
+                    <div className="absolute top-[-30px] right-[-30px] w-24 h-24 rounded-full bg-[#8D55F3]/10 blur-2xl"></div>
+                    <div className="absolute bottom-[-30px] left-[-30px] w-24 h-24 rounded-full bg-[#E11D48]/10 blur-2xl"></div>
+                    
+                    {/* Top Row */}
+                    <div className="flex justify-between items-start z-10">
+                      <span className="text-[7px] text-[#A57CF4] font-extrabold tracking-[0.2em] uppercase">OFFICIAL ACCESS PASS</span>
+                      <span className="text-[7px] text-white/30 font-semibold tracking-wider font-mono">
+                        #{ticket.ticketId.slice(-6).toUpperCase()}
+                      </span>
+                    </div>
+
+                    {/* Middle Title & Time Row */}
+                    <div className="z-10 mt-1">
+                      <h3 className="text-base font-black text-white uppercase tracking-tight leading-tight line-clamp-2">
+                        {ticket.eventName}
+                      </h3>
+                      <p className="text-[9px] text-white/50 font-bold uppercase tracking-wider mt-2 font-mono">
+                        {eventDateStr.split(',')[0]} • {eventTimeStr}
+                      </p>
+                    </div>
+
+                    {/* Bottom Row: Venue Info & QR Code */}
+                    <div className="flex justify-between items-end z-10 mt-3">
+                      
+                      {/* Styled Info Pills */}
+                      <div className="flex gap-1.5">
+                        
+                        {/* VENUE BOX */}
+                        <div className="bg-[#E11D48]/10 border border-[#E11D48]/20 rounded-xl px-1.5 py-1 flex flex-col items-center justify-center min-w-[48px] text-center">
+                          <span className="text-[5.5px] text-[#FF2D55] font-black uppercase tracking-wider">VENUE</span>
+                          <span className="text-[8px] font-black text-white mt-0.5 truncate max-w-[42px]">
+                            {venueAbbr}
+                          </span>
+                        </div>
+
+                        {/* ROW BOX */}
+                        <div className="bg-[#8D55F3]/10 border border-[#8D55F3]/20 rounded-xl px-1.5 py-1 flex flex-col items-center justify-center min-w-[42px] text-center">
+                          <span className="text-[5.5px] text-[#A57CF4] font-black uppercase tracking-wider">ROW</span>
+                          <span className="text-[8px] font-black text-white mt-0.5">
+                            {rowNum}
+                          </span>
+                        </div>
+
+                        {/* SEAT BOX */}
+                        <div className="bg-[#8D55F3]/10 border border-[#8D55F3]/20 rounded-xl px-1.5 py-1 flex flex-col items-center justify-center min-w-[42px] text-center">
+                          <span className="text-[5.5px] text-[#A57CF4] font-black uppercase tracking-wider">SEAT</span>
+                          <span className="text-[8px] font-black text-white mt-0.5">
+                            {seatNum}
+                          </span>
+                        </div>
+
+                      </div>
+
+                      {/* QR Code Container */}
+                      <div className="bg-white rounded-xl p-1.5 flex items-center justify-center shadow-lg border border-white/5 shrink-0">
+                        <QRCodeSVG value={ticket.ticketId} size={50} level="H" includeMargin={false} />
+                      </div>
+
+                    </div>
+
+                  </div>
+
+                </div>
+              );
+            })()}
+
+            {/* Ticket Info Card */}
+            <div className="bg-[#2A2A35]/30 border border-white/5 rounded-3xl p-5 mb-6 text-center mx-4">
+              <p className="text-white/40 text-[10px] uppercase font-bold tracking-wider">Registered Guest</p>
+              <h4 className="text-base font-extrabold text-white mt-1">{ticket.fullName}</h4>
+              <p className="text-xs text-white/40 mt-0.5">{ticket.email}</p>
+              
+              <div className="flex items-center justify-center gap-2 mt-4 bg-white/5 py-2 px-4 rounded-full border border-white/5 w-max mx-auto">
+                <div className={`w-2 h-2 rounded-full ${ticket.status === "Used" ? "bg-[#FF3B30] animate-pulse" : "bg-[#34C759] animate-pulse"}`} />
+                <span className="text-xs font-bold uppercase tracking-wider text-white/80">
+                  Ticket Status: {ticket.status === "Used" ? "Used / Scanned" : "Not Used / Valid"}
+                </span>
               </div>
-              <div className="flex-1 bg-[#2A2A35] py-2 px-4 rounded-full flex items-center justify-center gap-2 border border-white/5">
-                <MapPin className="w-3.5 h-3.5 text-white/70" />
-                <span className="text-xs font-medium text-white/70">Edge & Node</span>
-              </div>
-            </div>
-
-            <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold">Your Ticket</h2>
-              <p className="text-white/50 text-sm mt-1">{ticket.fullName}</p>
-            </div>
-
-            {/* Big White QR Card */}
-            <div className="bg-white rounded-[2rem] p-8 flex flex-col items-center justify-center relative mb-8 shadow-[0_20px_40px_rgba(0,0,0,0.4)] mx-4">
-              <div className="absolute top-1/2 -left-4 -translate-y-1/2 w-8 h-8 rounded-full bg-[#1A1A1F]"></div>
-              <div className="absolute top-1/2 -right-4 -translate-y-1/2 w-8 h-8 rounded-full bg-[#1A1A1F]"></div>
-              <QRCodeSVG value={ticket.ticketId} size={220} level="H" includeMargin={false} />
-              <p className="mt-4 font-mono text-xs text-gray-400">{ticket.ticketId}</p>
             </div>
 
             <div className="flex gap-4 px-4 mb-6">
-              <button className="flex-1 bg-[#2A2A35] py-4 rounded-[1.25rem] flex items-center justify-center gap-2 text-sm font-semibold">
+              <button className="flex-1 bg-[#2A2A35] py-4 rounded-[1.25rem] flex items-center justify-center gap-2 text-sm font-semibold hover:bg-white/10 transition-colors">
                 <Share className="w-4 h-4" /> Transfer
               </button>
-              <button className="flex-1 bg-white text-black py-4 rounded-[1.25rem] flex items-center justify-center gap-2 text-sm font-bold">
+              <button className="flex-1 bg-white text-black py-4 rounded-[1.25rem] flex items-center justify-center gap-2 text-sm font-bold hover:opacity-90 transition-opacity">
                 <Wallet className="w-4 h-4" /> Add to Wallet
               </button>
             </div>
