@@ -407,6 +407,86 @@ export default function AdminDashboard() {
     }
   };
 
+  // State for Admin Chance Requests
+  const [chanceRequestsList, setChanceRequestsList] = useState<any[]>([]);
+
+  // Effect to sync Chance Requests in real-time
+  useEffect(() => {
+    if (!db) return;
+    const q = query(collection(db, "chance_requests"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ docId: docSnap.id, ...docSnap.data() });
+      });
+      setChanceRequestsList(list);
+    }, (err) => {
+      console.error("Error listening to chance requests:", err);
+    });
+    return () => unsubscribe();
+  }, [db]);
+
+  const handleApproveChanceRequest = async (request: any) => {
+    if (!db) return;
+    try {
+      // 1. Update request status to accepted
+      await updateDoc(doc(db, "chance_requests", request.docId), {
+        status: "accepted",
+        resolvedAt: serverTimestamp()
+      });
+
+      // 2. Generate new ticket for the user
+      const ticketId = `PK-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+      await setDoc(doc(db, "tickets", ticketId), {
+        ticketId,
+        fullName: request.fullName,
+        email: request.userEmail.toLowerCase().trim(),
+        phoneNumber: request.phoneNumber || "",
+        eventName: request.eventName,
+        status: "Valid",
+        bookedAt: serverTimestamp(),
+        photoURL: request.photoURL || ""
+      });
+
+      // 3. Post a notification to the user
+      await addDoc(collection(db, "notifications"), {
+        title: `🎟️ Chance Request Approved: ${request.eventName}`,
+        message: `Congratulations ${request.fullName}! Your request for an entry ticket to "${request.eventName}" has been accepted. Your new Ticket ID is ${ticketId}.`,
+        userEmail: request.userEmail.toLowerCase().trim(),
+        createdAt: serverTimestamp()
+      });
+
+      alert(`Approved! New ticket (${ticketId}) generated for ${request.fullName}.`);
+    } catch (err) {
+      console.error("Error approving chance request:", err);
+      alert("Failed to approve chance request.");
+    }
+  };
+
+  const handleDeclineChanceRequest = async (request: any) => {
+    if (!db) return;
+    try {
+      // 1. Update request status to rejected
+      await updateDoc(doc(db, "chance_requests", request.docId), {
+        status: "rejected",
+        resolvedAt: serverTimestamp()
+      });
+
+      // 2. Post a notification to the user
+      await addDoc(collection(db, "notifications"), {
+        title: `❌ Chance Request Declined`,
+        message: `Your request for a ticket to "${request.eventName}" could not be approved at this time.`,
+        userEmail: request.userEmail.toLowerCase().trim(),
+        createdAt: serverTimestamp()
+      });
+
+      alert(`Declined request from ${request.fullName}.`);
+    } catch (err) {
+      console.error("Error declining chance request:", err);
+      alert("Failed to decline chance request.");
+    }
+  };
+
   useEffect(() => {
     if (!auth) {
       setIsAuthLoading(false);
@@ -1513,6 +1593,63 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               </div>
+
+              {/* Special Entry Requests (Chance Requests) */}
+              {(() => {
+                const userChanceRequests = chanceRequestsList.filter(
+                  (req) => req.userEmail.toLowerCase().trim() === selectedUserHistory.email.toLowerCase().trim()
+                );
+
+                if (userChanceRequests.length === 0) return null;
+
+                return (
+                  <div className="shrink-0 mb-6 border-b border-white/5 pb-4">
+                    <h5 className="text-xs font-bold text-white/40 uppercase tracking-wider mb-3 ml-1">Special Entry Requests</h5>
+                    <div className="space-y-3 max-h-[160px] overflow-y-auto pr-1 hide-scrollbar">
+                      {userChanceRequests.map((req) => (
+                        <div key={req.docId} className="bg-[#8D55F3]/5 border border-[#8D55F3]/10 rounded-xl p-3.5 flex flex-col gap-2">
+                          <div className="flex justify-between items-start">
+                            <div className="min-w-0 flex-1 pr-2">
+                              <h6 className="font-bold text-xs text-white truncate">{req.eventName}</h6>
+                              <span className="text-[9px] text-white/30 font-mono tracking-tighter block mt-0.5">
+                                Requested on: {req.requestedAt?.seconds 
+                                  ? new Date(req.requestedAt.seconds * 1000).toLocaleDateString(undefined, {month: 'short', day: 'numeric', hour: '2-digit', minute:'2-digit'})
+                                  : 'Just now'}
+                              </span>
+                            </div>
+                            <span className={`text-[8px] px-2 py-0.5 rounded-full font-bold uppercase shrink-0 ${
+                              req.status === "accepted" 
+                                ? "bg-green-500/10 text-green-400 border border-green-500/20" 
+                                : req.status === "rejected"
+                                ? "bg-red-500/10 text-red-400 border border-red-500/20"
+                                : "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 animate-pulse"
+                            }`}>
+                              {req.status}
+                            </span>
+                          </div>
+
+                          {req.status === "pending" && (
+                            <div className="flex gap-2 mt-1">
+                              <button 
+                                onClick={() => handleApproveChanceRequest(req)}
+                                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-1.5 rounded-lg text-[10px] transition-colors"
+                              >
+                                Accept
+                              </button>
+                              <button 
+                                onClick={() => handleDeclineChanceRequest(req)}
+                                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 rounded-lg text-[10px] transition-colors"
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               <h5 className="text-xs font-bold text-white/40 uppercase tracking-wider mb-3 ml-1 shrink-0">Booking History & Attendance</h5>
 

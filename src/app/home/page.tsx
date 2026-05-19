@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowLeft, MoreHorizontal, Share, Clock, MapPin, Home as HomeIcon, Bell, Wallet, PlusSquare, X, Map as MapIcon, Menu, LogOut, CheckCircle2, Ticket } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, Share, Clock, MapPin, Home as HomeIcon, Bell, Wallet, PlusSquare, X, Map as MapIcon, Menu, LogOut, CheckCircle2, Ticket, Sparkles } from "lucide-react";
 import { db, auth } from "@/lib/firebase";
 import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, onSnapshot, addDoc } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
@@ -75,6 +75,7 @@ export default function UserHome() {
   // Notifications State
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationsList, setNotificationsList] = useState<any[]>([]);
+  const [chanceRequests, setChanceRequests] = useState<any[]>([]);
   const [hasNewNotification, setHasNewNotification] = useState(false);
   const [photoError, setPhotoError] = useState(false);
 
@@ -220,6 +221,25 @@ export default function UserHome() {
       console.error("Error in real-time notifications listener:", err);
     });
 
+    return () => unsubscribe();
+  }, [userEmail, db]);
+
+  // Real-time Chance Requests Listener for current user
+  useEffect(() => {
+    if (!db || !userEmail) return;
+    const q = query(
+      collection(db, "chance_requests"),
+      where("userEmail", "==", userEmail.toLowerCase().trim())
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setChanceRequests(list);
+    }, (err) => {
+      console.error("Error in chance requests listener:", err);
+    });
     return () => unsubscribe();
   }, [userEmail, db]);
 
@@ -378,6 +398,29 @@ export default function UserHome() {
   const handleSignOut = async () => {
     await signOut(auth);
     router.replace("/login");
+  };
+
+  const handleRequestChance = async (ticketData: any) => {
+    if (!db || !userEmail) return;
+    try {
+      const requestId = `${userEmail.toLowerCase().trim()}_${ticketData.eventName.replace(/\s+/g, '_')}`;
+      const phoneNumber = ticketData.phoneNumber || formData.phoneNumber || "";
+
+      await setDoc(doc(db, "chance_requests", requestId), {
+        userEmail: userEmail.toLowerCase().trim(),
+        fullName: userName,
+        phoneNumber: phoneNumber,
+        eventName: ticketData.eventName,
+        status: "pending",
+        requestedAt: serverTimestamp(),
+        photoURL: userPhoto || ""
+      });
+
+      triggerToast("Special entry request sent to Admin!");
+    } catch (err) {
+      console.error("Error requesting chance:", err);
+      triggerToast("Failed to submit request.");
+    }
   };
 
   const avatars = [
@@ -719,9 +762,57 @@ export default function UserHome() {
               <button className="flex-1 bg-[#2A2A35] py-4 rounded-[1.25rem] flex items-center justify-center gap-2 text-sm font-semibold hover:bg-white/10 transition-colors">
                 <Share className="w-4 h-4" /> Transfer
               </button>
-              <button className="flex-1 bg-white text-black py-4 rounded-[1.25rem] flex items-center justify-center gap-2 text-sm font-bold hover:opacity-90 transition-opacity">
-                <Wallet className="w-4 h-4" /> Add to Wallet
-              </button>
+              {(() => {
+                const req = chanceRequests.find(
+                  (r) => r.eventName.toLowerCase().trim() === ticket.eventName.toLowerCase().trim()
+                );
+
+                if (!req) {
+                  return (
+                    <button 
+                      onClick={() => handleRequestChance(ticket)}
+                      className="flex-1 bg-gradient-to-r from-[#8D55F3] to-[#A57CF4] text-white py-4 rounded-[1.25rem] flex items-center justify-center gap-2 text-sm font-bold hover:opacity-90 transition-opacity"
+                    >
+                      <Sparkles className="w-4 h-4" /> Get a Chance
+                    </button>
+                  );
+                }
+
+                if (req.status === "pending") {
+                  return (
+                    <button 
+                      disabled
+                      className="flex-1 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 py-4 rounded-[1.25rem] flex items-center justify-center gap-2 text-sm font-bold opacity-85 cursor-not-allowed"
+                    >
+                      <Sparkles className="w-4 h-4 animate-pulse" /> Requested
+                    </button>
+                  );
+                }
+
+                if (req.status === "accepted") {
+                  return (
+                    <button 
+                      disabled
+                      className="flex-1 bg-green-500/10 text-green-400 border border-green-500/20 py-4 rounded-[1.25rem] flex items-center justify-center gap-2 text-sm font-bold opacity-85 cursor-not-allowed"
+                    >
+                      <CheckCircle2 className="w-4 h-4" /> Approved
+                    </button>
+                  );
+                }
+
+                if (req.status === "rejected") {
+                  return (
+                    <button 
+                      disabled
+                      className="flex-1 bg-red-500/10 text-red-400 border border-red-500/20 py-4 rounded-[1.25rem] flex items-center justify-center gap-2 text-sm font-bold opacity-85 cursor-not-allowed"
+                    >
+                      <X className="w-4 h-4" /> Declined
+                    </button>
+                  );
+                }
+
+                return null;
+              })()}
             </div>
           </div>
         </div>
