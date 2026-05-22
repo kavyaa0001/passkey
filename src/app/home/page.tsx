@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowLeft, MoreHorizontal, Share, Clock, MapPin, Home as HomeIcon, Bell, Wallet, PlusSquare, X, Map as MapIcon, Menu, LogOut, CheckCircle2, Ticket, Sparkles, Download } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, Share, Clock, MapPin, Home as HomeIcon, Bell, Wallet, PlusSquare, X, Map as MapIcon, Menu, LogOut, CheckCircle2, Ticket, Sparkles, Download, Send } from "lucide-react";
 import html2canvas from "html2canvas";
 import { db, auth } from "@/lib/firebase";
 import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, onSnapshot, addDoc } from "firebase/firestore";
@@ -80,6 +80,11 @@ export default function UserHome() {
   const [zoomQR, setZoomQR] = useState(false);
   const [hasNewNotification, setHasNewNotification] = useState(false);
   const [photoError, setPhotoError] = useState(false);
+
+  // Community Chat State
+  const [communityMessages, setCommunityMessages] = useState<any[]>([]);
+  const [newChatMessage, setNewChatMessage] = useState("");
+  const chatScrollRef = useRef<HTMLDivElement>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -245,6 +250,52 @@ export default function UserHome() {
     });
     return () => unsubscribe();
   }, [userEmail, db]);
+
+  // Real-time Community Messages Listener
+  useEffect(() => {
+    if (!db) return;
+    const q = query(collection(db, "community_messages"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs: any[] = [];
+      snapshot.forEach((docSnap) => {
+        msgs.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      msgs.sort((a, b) => {
+        const tA = a.createdAt?.seconds || 0;
+        const tB = b.createdAt?.seconds || 0;
+        return tA - tB;
+      });
+      setCommunityMessages(msgs);
+    });
+    return () => unsubscribe();
+  }, [db]);
+
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [communityMessages]);
+
+  const handleSendChat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!db || !newChatMessage.trim() || !userEmail) return;
+    
+    const msgText = newChatMessage.trim();
+    setNewChatMessage(""); // optimistic clear
+
+    try {
+      await addDoc(collection(db, "community_messages"), {
+        text: msgText,
+        userEmail: userEmail.toLowerCase().trim(),
+        userName: userName || "User",
+        userPhoto: userPhoto || "",
+        createdAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.error("Error sending message:", err);
+      triggerToast("Failed to send message.");
+    }
+  };
 
   const openNotifications = () => {
     setShowNotifications(true);
@@ -650,13 +701,57 @@ export default function UserHome() {
             </div>
           </div>
 
-          {/* Location */}
-          <div className="px-5 pt-8">
-            <h3 className="font-bold text-[22px] mb-4 text-white/90">Location</h3>
-            <div className="h-40 bg-[#2A2A35] rounded-[2rem] border border-white/5 overflow-hidden relative">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[#8D55F3]">
-                <MapPin className="w-8 h-8 drop-shadow-lg" />
+          {/* Community Chat */}
+          <div className="px-5 pt-8 flex-1 flex flex-col min-h-[400px]">
+            <h3 className="font-bold text-[22px] mb-4 text-white/90">Community</h3>
+            <div className="flex-1 bg-[#2A2A35]/50 rounded-[2rem] border border-white/5 overflow-hidden flex flex-col shadow-inner">
+              
+              {/* Chat Messages */}
+              <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 hide-scrollbar">
+                {communityMessages.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-white/40 text-sm font-medium">
+                    Be the first to say hi! 👋
+                  </div>
+                ) : (
+                  communityMessages.map((msg) => {
+                    const isMe = msg.userEmail === userEmail.toLowerCase().trim();
+                    return (
+                      <div key={msg.id} className={`flex gap-3 max-w-[85%] ${isMe ? 'ml-auto flex-row-reverse' : ''}`}>
+                        <img 
+                          src={msg.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(msg.userName)}&background=random&color=fff`} 
+                          alt="avatar" 
+                          className="w-8 h-8 rounded-full border border-white/10 shrink-0 object-cover bg-white" 
+                        />
+                        <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                          <span className="text-[10px] text-white/40 mb-1 px-1 font-medium">{isMe ? 'You' : msg.userName}</span>
+                          <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words ${isMe ? 'bg-[#8D55F3] text-white rounded-tr-sm' : 'bg-white/10 text-white/90 rounded-tl-sm border border-white/5'}`}>
+                            {msg.text}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
+
+              {/* Chat Input */}
+              <form onSubmit={handleSendChat} className="p-3 bg-white/5 border-t border-white/5 flex gap-2 shrink-0">
+                <input 
+                  type="text" 
+                  value={newChatMessage}
+                  onChange={(e) => setNewChatMessage(e.target.value)}
+                  placeholder="Say something..." 
+                  className="flex-1 min-w-0 bg-black/20 rounded-full px-4 py-2.5 text-sm text-white placeholder-white/40 focus:outline-none border border-white/5 focus:border-[#8D55F3]/50 transition-colors"
+                />
+                <button 
+                  type="submit" 
+                  disabled={!newChatMessage.trim()}
+                  className="w-10 h-10 rounded-full bg-[#8D55F3] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#A57CF4] transition-colors shrink-0"
+                >
+                  <Send className="w-4 h-4 text-white" />
+                </button>
+              </form>
+
             </div>
           </div>
         </div>

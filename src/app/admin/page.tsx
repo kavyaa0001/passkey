@@ -46,7 +46,13 @@ export default function AdminDashboard() {
 
   // Admin Stats State
   const [showStats, setShowStats] = useState(false);
-  const [stats, setStats] = useState({ total: 0, checkedIn: 0, pending: 0 });
+  const [stats, setStats] = useState<{
+    total: number;
+    checkedIn: number;
+    pending: number;
+    reTickets: number;
+    events: Record<string, { total: number; checkedIn: number; pending: number; reTickets: number }>;
+  }>({ total: 0, checkedIn: 0, pending: 0, reTickets: 0, events: {} });
 
   // Preset Configurations for Themes & Images
   const PRESETS = [
@@ -131,12 +137,35 @@ export default function AdminDashboard() {
 
   const handleDeleteEvent = async (docId: string) => {
     if (!db) return;
-    if (!confirm("Are you sure you want to delete this event?")) return;
+    if (!confirm("Are you sure you want to delete this event and all associated tickets?")) return;
     try {
-      await deleteDoc(doc(db, "events", docId));
+      const eventRef = doc(db, "events", docId);
+      const eventSnap = await getDoc(eventRef);
+      
+      if (eventSnap.exists()) {
+        const eventData = eventSnap.data();
+        const eventName = eventData.title?.replace(/\n/g, ' ') || eventData.shortTitle || "";
+        
+        // Delete all tickets for this event
+        if (eventName) {
+          const ticketsQ = query(collection(db, "tickets"), where("eventName", "==", eventName));
+          const ticketsSnap = await getDocs(ticketsQ);
+          const deletePromises = ticketsSnap.docs.map(tDoc => deleteDoc(doc(db, "tickets", tDoc.id)));
+          
+          // Also try with shortTitle if they differ (just in case)
+          if (eventData.shortTitle && eventData.shortTitle !== eventName) {
+             const shortTicketsQ = query(collection(db, "tickets"), where("eventName", "==", eventData.shortTitle));
+             const shortTicketsSnap = await getDocs(shortTicketsQ);
+             shortTicketsSnap.docs.forEach(tDoc => deletePromises.push(deleteDoc(doc(db, "tickets", tDoc.id))));
+          }
+          await Promise.all(deletePromises);
+        }
+      }
+
+      await deleteDoc(eventRef);
       await fetchAdminEvents();
     } catch (err) {
-      console.error("Error deleting event:", err);
+      console.error("Error deleting event and tickets:", err);
     }
   };
 
@@ -308,19 +337,65 @@ export default function AdminDashboard() {
 
     const q = query(collection(db, "tickets"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      let total = 0;
-      let checkedIn = 0;
       const ticketList: any[] = [];
       
       snapshot.forEach((docSnap) => {
         const ticketData = docSnap.data();
         ticketList.push({ docId: docSnap.id, ...ticketData });
-        total++;
-        if (ticketData.status === "Used") checkedIn++;
+      });
+
+      // Sort tickets by bookedAt so earlier tickets come first
+      ticketList.sort((a, b) => {
+         const tA = a.bookedAt?.seconds || 0;
+         const tB = b.bookedAt?.seconds || 0;
+         return tA - tB;
+      });
+
+      let total = 0;
+      let checkedIn = 0;
+      let reTickets = 0;
+      const eventStats: Record<string, { total: number; checkedIn: number; pending: number; reTickets: number }> = {};
+      const userEventMap = new Map<string, boolean>();
+
+      ticketList.forEach((ticketData) => {
+        const eventName = ticketData.eventName || "Unknown Event";
+        const emailKey = (ticketData.email || ticketData.userEmail || "").toLowerCase().trim();
+        const userEventKey = `${emailKey}_${eventName}`;
+
+        if (!eventStats[eventName]) {
+          eventStats[eventName] = { total: 0, checkedIn: 0, pending: 0, reTickets: 0 };
+        }
+
+        const isCheckedIn = ticketData.status === "Used";
+
+        if (emailKey && userEventMap.has(userEventKey)) {
+          // Re-ticket
+          reTickets++;
+          eventStats[eventName].reTickets++;
+        } else {
+          // Unique ticket
+          if (emailKey) {
+            userEventMap.set(userEventKey, true);
+          }
+          total++;
+          eventStats[eventName].total++;
+          if (isCheckedIn) {
+            checkedIn++;
+            eventStats[eventName].checkedIn++;
+          } else {
+            eventStats[eventName].pending++;
+          }
+        }
       });
       
       // Update stats state
-      setStats({ total, checkedIn, pending: total - checkedIn });
+      setStats({ 
+        total, 
+        checkedIn, 
+        pending: total - checkedIn, 
+        reTickets,
+        events: eventStats 
+      });
 
       // Update usersList state group-by email
       const userMap = new Map<string, any>();
@@ -1131,33 +1206,70 @@ export default function AdminDashboard() {
                 </button>
               </div>
 
-              {/* Stats Cards Grid */}
-              <div className="grid grid-cols-3 gap-3.5 mb-6 shrink-0">
-                <div className="bg-[#2A2A35]/50 border border-white/5 rounded-2xl p-4 text-center">
-                  <p className="text-[10px] text-white/40 uppercase font-bold mb-1">Total Passes</p>
-                  <p className="text-2xl font-black text-white">{stats.total}</p>
+              {/* Overall Stats Cards Grid */}
+              <div className="grid grid-cols-4 gap-3 mb-6 shrink-0">
+                <div className="bg-[#2A2A35]/50 border border-white/5 rounded-2xl p-3 text-center">
+                  <p className="text-[10px] text-white/40 uppercase font-bold mb-1">Total</p>
+                  <p className="text-xl font-black text-white">{stats.total}</p>
                 </div>
-                <div className="bg-[#34C759]/10 border border-[#34C759]/20 rounded-2xl p-4 text-center">
+                <div className="bg-[#34C759]/10 border border-[#34C759]/20 rounded-2xl p-3 text-center">
                   <p className="text-[10px] text-[#34C759] uppercase font-bold mb-1">Checked In</p>
-                  <p className="text-2xl font-black text-[#34C759]">{stats.checkedIn}</p>
+                  <p className="text-xl font-black text-[#34C759]">{stats.checkedIn}</p>
                 </div>
-                <div className="bg-[#FF9500]/10 border border-[#FF9500]/20 rounded-2xl p-4 text-center">
+                <div className="bg-[#FF9500]/10 border border-[#FF9500]/20 rounded-2xl p-3 text-center">
                   <p className="text-[10px] text-[#FF9500] uppercase font-bold mb-1">Pending</p>
-                  <p className="text-2xl font-black text-[#FF9500]">{stats.pending}</p>
+                  <p className="text-xl font-black text-[#FF9500]">{stats.pending}</p>
+                </div>
+                <div className="bg-[#FF3B30]/10 border border-[#FF3B30]/20 rounded-2xl p-3 text-center">
+                  <p className="text-[10px] text-[#FF3B30] uppercase font-bold mb-1">Re-Tickets</p>
+                  <p className="text-xl font-black text-[#FF3B30]">{stats.reTickets}</p>
                 </div>
               </div>
 
-              {/* Progress Visualizer */}
-              <div className="bg-[#2A2A35]/50 border border-white/5 rounded-2xl p-5 mb-8 shrink-0">
-                <div className="flex justify-between text-xs font-bold text-white/50 uppercase mb-2">
-                  <span>Attendance Progress</span>
-                  <span>{stats.total > 0 ? Math.round((stats.checkedIn / stats.total) * 100) : 0}%</span>
-                </div>
-                <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-gradient-to-r from-[#8D55F3] to-[#34C759] transition-all duration-500" 
-                    style={{ width: `${stats.total > 0 ? (stats.checkedIn / stats.total) * 100 : 0}%` }}
-                  />
+              {/* Event Wise Stats */}
+              <div className="flex-1 overflow-y-auto hide-scrollbar mb-6 min-h-[150px]">
+                <h4 className="text-sm font-bold text-white/70 mb-3 uppercase tracking-wider">Event Breakdown</h4>
+                <div className="space-y-3">
+                  {Object.entries(stats.events).length === 0 ? (
+                    <div className="text-white/40 text-xs text-center py-4 bg-[#2A2A35]/30 rounded-xl border border-white/5">
+                      No events data available
+                    </div>
+                  ) : (
+                    Object.entries(stats.events).map(([eventName, eventStat]) => (
+                      <div key={eventName} className="bg-[#2A2A35]/50 border border-white/5 rounded-2xl p-4">
+                        <div className="flex justify-between items-center mb-3">
+                          <h5 className="font-bold text-sm text-white truncate pr-2">{eventName}</h5>
+                          <span className="text-[10px] font-bold px-2 py-1 bg-white/10 rounded-md text-white/70">
+                            {eventStat.total > 0 ? Math.round((eventStat.checkedIn / eventStat.total) * 100) : 0}% Check-in
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4 text-xs">
+                          <div className="flex flex-col">
+                            <span className="text-white/40 text-[10px] uppercase">Total</span>
+                            <span className="font-bold">{eventStat.total}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[#34C759]/70 text-[10px] uppercase">In</span>
+                            <span className="font-bold text-[#34C759]">{eventStat.checkedIn}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[#FF9500]/70 text-[10px] uppercase">Wait</span>
+                            <span className="font-bold text-[#FF9500]">{eventStat.pending}</span>
+                          </div>
+                          <div className="flex flex-col ml-auto text-right">
+                            <span className="text-[#FF3B30]/70 text-[10px] uppercase">Re-Tickets</span>
+                            <span className="font-bold text-[#FF3B30]">{eventStat.reTickets}</span>
+                          </div>
+                        </div>
+                        <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden mt-3">
+                          <div 
+                            className="h-full bg-gradient-to-r from-[#8D55F3] to-[#34C759] transition-all duration-500" 
+                            style={{ width: `${eventStat.total > 0 ? (eventStat.checkedIn / eventStat.total) * 100 : 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 
