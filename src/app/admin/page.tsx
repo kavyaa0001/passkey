@@ -99,6 +99,7 @@ export default function AdminDashboard() {
   const [evtStartTime, setEvtStartTime] = useState("");
   const [evtEndTime, setEvtEndTime] = useState("");
   const [evtVenuePill, setEvtVenuePill] = useState("");
+  const [evtExtraFields, setEvtExtraFields] = useState("");
   const [selectedPresetIndex, setSelectedPresetIndex] = useState(0);
   const [isSavingEvent, setIsSavingEvent] = useState(false);
 
@@ -220,7 +221,8 @@ export default function AdminDashboard() {
         theme: preset.theme,
         bgTheme: preset.bgTheme,
         textColor: preset.textColor,
-        imageUrl: evtImage || preset.imageUrl || ""
+        imageUrl: evtImage || preset.imageUrl || "",
+        extraFields: evtExtraFields.split(',').map(f => f.trim()).filter(f => f)
       });
 
       // Automatically post a notification announcement for users
@@ -238,6 +240,7 @@ export default function AdminDashboard() {
       setEvtStartTime("");
       setEvtEndTime("");
       setEvtVenuePill("");
+      setEvtExtraFields("");
       setSelectedPresetIndex(0);
       setShowAddEvent(false);
       await fetchAdminEvents();
@@ -268,7 +271,8 @@ export default function AdminDashboard() {
         theme: preset.theme,
         bgTheme: preset.bgTheme,
         textColor: preset.textColor,
-        imageUrl: evtImage || preset.imageUrl || ""
+        imageUrl: evtImage || preset.imageUrl || "",
+        extraFields: evtExtraFields.split(',').map(f => f.trim()).filter(f => f)
       });
 
       // Reset form
@@ -279,6 +283,7 @@ export default function AdminDashboard() {
       setEvtStartTime("");
       setEvtEndTime("");
       setEvtVenuePill("");
+      setEvtExtraFields("");
       setSelectedPresetIndex(0);
       setEditingEventId(null);
       setActiveEventTab("list");
@@ -1203,6 +1208,7 @@ export default function AdminDashboard() {
                     setEvtStartTime("");
                     setEvtEndTime("");
                     setEvtVenuePill("");
+                    setEvtExtraFields("");
                     setSelectedPresetIndex(0);
                     setEditingEventId(null);
                     setActiveEventTab("add");
@@ -1242,6 +1248,7 @@ export default function AdminDashboard() {
                               setEvtTitle(evt.title || "");
                               setEvtImage(evt.imageUrl || "");
                               setEvtVenuePill(evt.venuePill || "");
+                              setEvtExtraFields(evt.extraFields ? evt.extraFields.join(", ") : "");
                               setEvtDescription(evt.description || "");
                               
                               const parseToDateInput = (str: string) => {
@@ -1415,6 +1422,17 @@ export default function AdminDashboard() {
                       placeholder="e.g. Javits Center, NYC" 
                       value={evtVenuePill}
                       onChange={(e) => setEvtVenuePill(e.target.value)}
+                      className="bg-[#2A2A35] rounded-xl px-4 py-3 mt-1 w-full text-white placeholder-white/30 border border-white/5 focus:outline-none focus:border-[#8D55F3] transition-colors text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-white/50 uppercase ml-1">Extra Registration Fields</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. College Name, GitHub Profile (comma separated)" 
+                      value={evtExtraFields}
+                      onChange={(e) => setEvtExtraFields(e.target.value)}
                       className="bg-[#2A2A35] rounded-xl px-4 py-3 mt-1 w-full text-white placeholder-white/30 border border-white/5 focus:outline-none focus:border-[#8D55F3] transition-colors text-sm"
                     />
                   </div>

@@ -104,6 +104,7 @@ export default function UserHome() {
     email: "",
     phoneNumber: "",
   });
+  const [extraData, setExtraData] = useState<Record<string, string>>({});
 
   // Listen to registrations for active event
   useEffect(() => {
@@ -336,6 +337,10 @@ export default function UserHome() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  const handleExtraChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setExtraData({ ...extraData, [e.target.name]: e.target.value });
+  };
+
   const handleShare = () => {
     if (typeof window !== "undefined") {
       const shareUrl = `${window.location.origin}/home?event=${activeEvent.id}`;
@@ -370,6 +375,7 @@ export default function UserHome() {
         fullName: formData.fullName,
         email: normalizedEmail,
         phoneNumber: formData.phoneNumber,
+        extraData,
         eventName,
         status: "Valid",
         bookedAt: serverTimestamp(),
@@ -979,6 +985,13 @@ export default function UserHome() {
                   <input required type="tel" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange} placeholder="+91 98765 43210"
                     className="bg-[#2A2A35] rounded-xl px-4 py-3.5 w-full text-white placeholder-white/40 border border-white/5 focus:outline-none focus:border-[#6552D0] transition-colors" />
                 </div>
+                {activeEvent.extraFields && activeEvent.extraFields.map((field: string, idx: number) => (
+                  <div key={idx}>
+                    <label className="block text-xs font-medium text-white/50 uppercase mb-1.5 ml-1">{field}</label>
+                    <input required type="text" name={field} value={extraData[field] || ""} onChange={handleExtraChange} placeholder={`Enter ${field}`}
+                      className="bg-[#2A2A35] rounded-xl px-4 py-3.5 w-full text-white placeholder-white/40 border border-white/5 focus:outline-none focus:border-[#6552D0] transition-colors" />
+                  </div>
+                ))}
                 <button type="submit" disabled={isSubmitting} className={`w-full text-white font-bold py-4 rounded-[1.25rem] mt-6 flex justify-center shadow-lg transition-colors ${activeEvent.bgTheme} hover:opacity-90`}>
                   {isSubmitting ? <div className="w-6 h-6 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : "Confirm Registration"}
                 </button>
