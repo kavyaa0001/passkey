@@ -2,10 +2,10 @@
 
 import { useState, useRef, useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowLeft, MoreHorizontal, Share, Clock, MapPin, Home as HomeIcon, Bell, Wallet, PlusSquare, X, Map as MapIcon, Menu, LogOut, CheckCircle2, Ticket, Sparkles, Download, Send } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, Share, Clock, MapPin, Home as HomeIcon, Bell, Wallet, PlusSquare, X, Map as MapIcon, Menu, LogOut, CheckCircle2, Ticket, Sparkles, Download, Send, Image as ImageIcon, MessageSquare, Edit2, Trash2 } from "lucide-react";
 import html2canvas from "html2canvas";
 import { db, auth } from "@/lib/firebase";
-import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, onSnapshot, addDoc } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, onSnapshot, addDoc, deleteDoc, updateDoc } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useRouter } from "next/navigation";
 
@@ -84,7 +84,14 @@ export default function UserHome() {
   // Community Chat State
   const [communityMessages, setCommunityMessages] = useState<any[]>([]);
   const [newChatMessage, setNewChatMessage] = useState("");
+  const [newChatImage, setNewChatImage] = useState<string | null>(null);
+  const [showCommunityModal, setShowCommunityModal] = useState(false);
+  const [activeMessageOptions, setActiveMessageOptions] = useState<string | null>(null);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editMessageText, setEditMessageText] = useState("");
+  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -276,16 +283,48 @@ export default function UserHome() {
     }
   }, [communityMessages]);
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const MAX_WIDTH = 800;
+          let scaleSize = 1;
+          if (img.width > MAX_WIDTH) {
+            scaleSize = MAX_WIDTH / img.width;
+          }
+          canvas.width = img.width * scaleSize;
+          canvas.height = img.height * scaleSize;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.6); // Compress
+            setNewChatImage(dataUrl);
+          }
+        };
+        img.src = event.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSendChat = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!db || !newChatMessage.trim() || !userEmail) return;
+    if (!db || (!newChatMessage.trim() && !newChatImage) || !userEmail) return;
     
     const msgText = newChatMessage.trim();
+    const msgImage = newChatImage;
     setNewChatMessage(""); // optimistic clear
+    setNewChatImage(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
 
     try {
       await addDoc(collection(db, "community_messages"), {
         text: msgText,
+        imageUrl: msgImage,
         userEmail: userEmail.toLowerCase().trim(),
         userName: userName || "User",
         userPhoto: userPhoto || "",
@@ -294,6 +333,42 @@ export default function UserHome() {
     } catch (err) {
       console.error("Error sending message:", err);
       triggerToast("Failed to send message.");
+    }
+  };
+
+  const handleTouchStart = (msgId: string, isMe: boolean) => {
+    if (!isMe) return;
+    longPressTimer.current = setTimeout(() => {
+      setActiveMessageOptions(msgId);
+    }, 500);
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+  };
+
+  const handleDeleteMessage = async (msgId: string) => {
+    if (!db) return;
+    try {
+      await deleteDoc(doc(db, "community_messages", msgId));
+      setActiveMessageOptions(null);
+    } catch (err) {
+      console.error("Error deleting message", err);
+    }
+  };
+
+  const submitEditMessage = async (msgId: string) => {
+    if (!db || !editMessageText.trim()) return;
+    try {
+      await updateDoc(doc(db, "community_messages", msgId), {
+        text: editMessageText.trim(),
+        isEdited: true
+      });
+      setEditingMessageId(null);
+      setEditMessageText("");
+      setActiveMessageOptions(null);
+    } catch (err) {
+      console.error("Error editing message", err);
     }
   };
 
@@ -701,58 +776,19 @@ export default function UserHome() {
             </div>
           </div>
 
-          {/* Community Chat */}
-          <div className="px-5 pt-8 flex-1 flex flex-col min-h-[400px]">
+          {/* Community Chat Button */}
+          <div className="px-5 pt-8">
             <h3 className="font-bold text-[22px] mb-4 text-white/90">Community</h3>
-            <div className="flex-1 bg-[#2A2A35]/50 rounded-[2rem] border border-white/5 overflow-hidden flex flex-col shadow-inner">
-              
-              {/* Chat Messages */}
-              <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 hide-scrollbar">
-                {communityMessages.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-white/40 text-sm font-medium">
-                    Be the first to say hi! 👋
-                  </div>
-                ) : (
-                  communityMessages.map((msg) => {
-                    const isMe = msg.userEmail === userEmail.toLowerCase().trim();
-                    return (
-                      <div key={msg.id} className={`flex gap-3 max-w-[85%] ${isMe ? 'ml-auto flex-row-reverse' : ''}`}>
-                        <img 
-                          src={msg.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(msg.userName)}&background=random&color=fff`} 
-                          alt="avatar" 
-                          className="w-8 h-8 rounded-full border border-white/10 shrink-0 object-cover bg-white" 
-                        />
-                        <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                          <span className="text-[10px] text-white/40 mb-1 px-1 font-medium">{isMe ? 'You' : msg.userName}</span>
-                          <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words ${isMe ? 'bg-[#8D55F3] text-white rounded-tr-sm' : 'bg-white/10 text-white/90 rounded-tl-sm border border-white/5'}`}>
-                            {msg.text}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
+            <button 
+              onClick={() => setShowCommunityModal(true)}
+              className="w-full bg-[#2A2A35]/50 hover:bg-[#2A2A35]/80 transition-colors rounded-[2rem] border border-white/5 overflow-hidden flex flex-col items-center justify-center py-10 shadow-inner group"
+            >
+              <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                <MessageSquare className="w-8 h-8 text-[#8D55F3]" />
               </div>
-
-              {/* Chat Input */}
-              <form onSubmit={handleSendChat} className="p-3 bg-white/5 border-t border-white/5 flex gap-2 shrink-0">
-                <input 
-                  type="text" 
-                  value={newChatMessage}
-                  onChange={(e) => setNewChatMessage(e.target.value)}
-                  placeholder="Say something..." 
-                  className="flex-1 min-w-0 bg-black/20 rounded-full px-4 py-2.5 text-sm text-white placeholder-white/40 focus:outline-none border border-white/5 focus:border-[#8D55F3]/50 transition-colors"
-                />
-                <button 
-                  type="submit" 
-                  disabled={!newChatMessage.trim()}
-                  className="w-10 h-10 rounded-full bg-[#8D55F3] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#A57CF4] transition-colors shrink-0"
-                >
-                  <Send className="w-4 h-4 text-white" />
-                </button>
-              </form>
-
-            </div>
+              <span className="font-bold text-white/90 text-lg">Join Community Chat</span>
+              <span className="text-white/40 text-xs mt-2">Connect with other attendees</span>
+            </button>
           </div>
         </div>
       ) : (
@@ -1328,6 +1364,133 @@ export default function UserHome() {
           </div>
         </>
       )}
+      {/* COMMUNITY CHAT MODAL */}
+      {showCommunityModal && (
+        <>
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-sm z-[60] animate-in fade-in" onClick={() => setShowCommunityModal(false)} />
+          <div className="absolute bottom-0 left-0 w-full z-[70] animate-in slide-in-from-bottom duration-300">
+            <div className="bg-[#1C1C22] rounded-t-[2.5rem] p-6 pb-6 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] border-t border-white/5 h-[85vh] flex flex-col">
+              <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto mb-6 shrink-0"></div>
+              
+              <div className="flex justify-between items-center mb-6 shrink-0">
+                <h3 className="text-xl font-bold">Community Chat</h3>
+                <button onClick={() => setShowCommunityModal(false)} className="w-8 h-8 bg-white/5 rounded-full flex items-center justify-center border border-white/5">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex-1 bg-[#2A2A35]/50 rounded-[1.5rem] border border-white/5 overflow-hidden flex flex-col shadow-inner">
+                {/* Chat Messages */}
+                <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 hide-scrollbar">
+                  {communityMessages.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-white/40 text-sm font-medium">
+                      Be the first to say hi! 👋
+                    </div>
+                  ) : (
+                    communityMessages.map((msg) => {
+                      const isMe = msg.userEmail === userEmail.toLowerCase().trim();
+                      return (
+                        <div key={msg.id} className={`flex gap-3 max-w-[85%] ${isMe ? 'ml-auto flex-row-reverse' : ''}`}>
+                          <img 
+                            src={msg.userPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(msg.userName)}&background=random&color=fff`} 
+                            alt="avatar" 
+                            className="w-8 h-8 rounded-full border border-white/10 shrink-0 object-cover bg-white" 
+                          />
+                          <div 
+                            className={`flex flex-col relative ${isMe ? 'items-end' : 'items-start'}`}
+                            onPointerDown={() => handleTouchStart(msg.id, isMe)}
+                            onPointerUp={handleTouchEnd}
+                            onPointerLeave={handleTouchEnd}
+                          >
+                            <span className="text-[10px] text-white/40 mb-1 px-1 font-medium">{isMe ? 'You' : msg.userName}</span>
+                            
+                            {editingMessageId === msg.id ? (
+                               <div className="flex gap-2 items-center bg-white/10 p-2 rounded-2xl border border-white/10">
+                                 <input 
+                                   type="text" 
+                                   value={editMessageText} 
+                                   onChange={(e) => setEditMessageText(e.target.value)} 
+                                   className="bg-transparent border-none text-white text-sm outline-none focus:ring-0 w-32 md:w-48" 
+                                   autoFocus
+                                 />
+                                 <button onClick={() => submitEditMessage(msg.id)} className="bg-[#8D55F3] p-1.5 rounded-full"><CheckCircle2 className="w-4 h-4 text-white" /></button>
+                                 <button onClick={() => setEditingMessageId(null)} className="bg-[#FF3B30] p-1.5 rounded-full"><X className="w-4 h-4 text-white" /></button>
+                               </div>
+                            ) : (
+                               <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words relative ${isMe ? 'bg-[#8D55F3] text-white rounded-tr-sm' : 'bg-white/10 text-white/90 rounded-tl-sm border border-white/5'}`}>
+                                 {msg.imageUrl && (
+                                   <img src={msg.imageUrl} alt="attachment" className="w-full max-w-[200px] rounded-xl mb-2 object-cover" />
+                                 )}
+                                 {msg.text}
+                                 {msg.isEdited && <span className="text-[9px] text-white/50 ml-2 italic block mt-1">(edited)</span>}
+                               </div>
+                            )}
+
+                            {/* Options Popover */}
+                            {activeMessageOptions === msg.id && !editingMessageId && (
+                              <div className="absolute top-full mt-1 right-0 bg-[#1C1C22] border border-white/10 rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.8)] overflow-hidden z-50 flex flex-col w-28 animate-in fade-in zoom-in-95 duration-200">
+                                <button onClick={() => { setEditingMessageId(msg.id); setEditMessageText(msg.text); setActiveMessageOptions(null); }} className="px-3 py-2.5 text-sm font-medium text-white/90 hover:bg-white/10 flex items-center gap-2 transition-colors">
+                                  <Edit2 className="w-3.5 h-3.5 text-[#8D55F3]" /> Edit
+                                </button>
+                                <button onClick={() => handleDeleteMessage(msg.id)} className="px-3 py-2.5 text-sm font-medium text-[#FF4444] hover:bg-white/10 flex items-center gap-2 border-t border-white/5 transition-colors">
+                                  <Trash2 className="w-3.5 h-3.5 text-[#FF4444]" /> Delete
+                                </button>
+                                <button onClick={() => setActiveMessageOptions(null)} className="px-3 py-2.5 text-xs font-medium text-white/40 hover:bg-white/10 text-center border-t border-white/5 transition-colors">
+                                  Cancel
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Chat Input */}
+                <div className="flex flex-col bg-white/5 border-t border-white/5 shrink-0">
+                  {newChatImage && (
+                    <div className="p-3 pb-0 relative">
+                      <div className="relative inline-block">
+                        <img src={newChatImage} alt="preview" className="h-16 w-16 object-cover rounded-xl border border-white/10 shadow-lg" />
+                        <button onClick={() => { setNewChatImage(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="absolute -top-2 -right-2 bg-[#FF3B30] text-white p-1 rounded-full shadow-md">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <form onSubmit={handleSendChat} className="p-3 flex gap-2">
+                    <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImageSelect} className="hidden" />
+                    <button 
+                      type="button" 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors shrink-0"
+                    >
+                      <ImageIcon className="w-4 h-4 text-white" />
+                    </button>
+                    <input 
+                      type="text" 
+                      value={newChatMessage}
+                      onChange={(e) => setNewChatMessage(e.target.value)}
+                      placeholder="Say something..." 
+                      className="flex-1 min-w-0 bg-black/20 rounded-full px-4 py-2.5 text-sm text-white placeholder-white/40 focus:outline-none border border-white/5 focus:border-[#8D55F3]/50 transition-colors"
+                    />
+                    <button 
+                      type="submit" 
+                      disabled={!newChatMessage.trim() && !newChatImage}
+                      className="w-10 h-10 rounded-full bg-[#8D55F3] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#A57CF4] transition-colors shrink-0"
+                    >
+                      <Send className="w-4 h-4 text-white" />
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </>
+      )}
+
       {toastMessage && (
         <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[100] bg-white/10 backdrop-blur-xl border border-white/20 px-5 py-3 rounded-full shadow-[0_10px_30px_rgba(0,0,0,0.6)] animate-in fade-in zoom-in duration-200">
           <p className="text-white text-xs font-bold flex items-center gap-2">
